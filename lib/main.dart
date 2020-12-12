@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:timer/TimerController.dart';
 
+import 'model.dart';
+
 void main() {
   runApp(MyApp());
 }
@@ -50,15 +52,19 @@ class _MyState extends State<_MyHomePage> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        StreamBuilder<Result>(
-          stream: _timerController.stream,
+        StreamBuilder<Event>(
+          stream: _timerController.eventStream,
           builder: (context, snapshot) {
-            final second = !snapshot.hasData ? 0.0 : snapshot.data.second;
-            final status = !snapshot.hasData ? '' : snapshot.data.status;
-            return _DisplayWidget(second: second, status: status);
+            if (!snapshot.hasData) {
+              return _DisplayWidget(seconds: 0, status: '');
+            }
+            final time = snapshot.data.time;
+            final status = snapshot.data.ui == UI.STARTED ? '已开始' : '已结束';
+            return _DisplayWidget(seconds: time, status: status);
           },
         ),
         _MyTimerOperationWidget(
+          timerController: _timerController,
           callback: (command) {
             _timerController.execCommand(command);
           },
@@ -71,23 +77,62 @@ class _MyState extends State<_MyHomePage> {
   }
 }
 
+class _MyTimerOperationWidget extends StatelessWidget {
+  final Function(Command) _callback;
+  final TimerController _timerController;
+
+  _MyTimerOperationWidget({
+    TimerController timerController,
+    Function callback,
+  })  : _timerController = timerController,
+        _callback = callback;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+        stream: _timerController.uiStream,
+        builder: (context, snapshot) {
+          final uiState = snapshot.hasData ? snapshot.data : UI.STOPED;
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _RaisedButtonWidget(
+                title: '开始',
+                enabled: uiState == UI.STOPED,
+                onPressed: () {
+                  _callback(Command.START);
+                },
+              ),
+              _RaisedButtonWidget(
+                title: '结束',
+                enabled: uiState == UI.STARTED,
+                onPressed: () {
+                  _callback(Command.STOP);
+                },
+              ),
+            ],
+          );
+        });
+  }
+}
+
 class _DisplayWidget extends StatelessWidget {
   const _DisplayWidget({
     Key key,
-    @required this.second,
+    @required this.seconds,
     @required this.status,
   }) : super(key: key);
 
-  final double second;
+  final double seconds;
   final String status;
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          '${second.toStringAsFixed(1)}秒',
+          '${seconds.toStringAsFixed(1)}秒',
           style: Theme.of(context).textTheme.headline4,
         ),
         Text(
@@ -102,41 +147,19 @@ class _DisplayWidget extends StatelessWidget {
   }
 }
 
-class _MyTimerOperationWidget extends StatelessWidget {
-  final Function(Command) _callback;
+class _RaisedButtonWidget extends StatelessWidget {
+  final String title;
+  final Function _onPressed;
+  final bool enabled;
 
-  _MyTimerOperationWidget({Function callback}) : _callback = callback;
+  _RaisedButtonWidget({this.title, this.enabled, Function onPressed})
+      : _onPressed = (enabled ? onPressed : null);
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        RaisedButton(
-          child: Text("开始"),
-          onPressed: () {
-            _callback(Command.START);
-          },
-        ),
-        RaisedButton(
-          child: Text("暂停"),
-          onPressed: () {
-            _callback(Command.PAUSE);
-          },
-        ),
-        RaisedButton(
-          child: Text("继续"),
-          onPressed: () {
-            _callback(Command.RESUME);
-          },
-        ),
-        RaisedButton(
-          child: Text("结束"),
-          onPressed: () {
-            _callback(Command.FINISH);
-          },
-        ),
-      ],
+    return RaisedButton(
+      child: Text(title),
+      onPressed: _onPressed,
     );
   }
 }

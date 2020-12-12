@@ -1,130 +1,75 @@
 import 'dart:async';
-import 'package:dataclass/dataclass.dart';
-
-enum Command {
-  START,
-  PAUSE,
-  RESUME,
-  FINISH,
-}
-
-@dataClass
-class Result {
-  final double second;
-  final String status;
-
-  Result(this.second, this.status);
-}
-
-@dataClass
-class TimeData {
-  final StreamController<Result> streamController;
-  final double sum;
-
-  TimeData(this.streamController, this.sum);
-}
+import 'package:rxdart/streams.dart';
+import 'model.dart';
 
 typedef CommandFunc = Function(Command) Function(Command);
 
-CommandFunc _startTimer(final timeData) {
-  var sum = timeData.sum;
-
-  // 启动计时
-  final timer = Timer.periodic(Duration(milliseconds: 100), (timer) {
-    sum += 0.1;
-    timeData.streamController.add(Result(sum, '开始了'));
-  });
-
-  // 下一个函数
-  CommandFunc nextFunc(command) {
-    if (command != Command.PAUSE && command != Command.FINISH) {
-      return nextFunc;
-    }
-
-    final map = {
-      Command.PAUSE: () =>
-          _handlePause(timer, TimeData(timeData.streamController, sum)),
-      Command.FINISH: () => _handleFinish(timer, timeData),
-    };
-    return map[command].call();
-  }
-
-  return nextFunc;
-}
-
-CommandFunc _handlePause(final timer, final timeData) {
-  timer.cancel();
-
-  // 下一个函数
-  CommandFunc nextFunc(command) {
-    if (command != Command.RESUME) {
-      return nextFunc;
-    }
-    return _handleResume(timeData);
-  }
-
-  return nextFunc;
-}
-
-CommandFunc _handleResume(final timeData) {
-  final newTimeData = TimeData(timeData.streamController, timeData.sum);
-  return _startTimer(newTimeData);
-}
-
-CommandFunc _handleFinish(final timer, final timeData) {
-  timer.cancel();
-
-  // 下一个函数
-  CommandFunc nextFunc(command) {
+CommandFunc _createStartFunc(
+    final Sink<double> timeSink, final Sink<UI> uiSink) {
+  CommandFunc func(command) {
     if (command != Command.START) {
-      return nextFunc;
+      return func;
     }
-    final newTimeData = TimeData(timeData.streamController, 0);
-    return _startTimer(newTimeData);
+    // 启动计时
+    var sum = 0.0;
+    final timer = Timer.periodic(Duration(milliseconds: 100), (timer) {
+      sum += 0.1;
+      timeSink.add(sum);
+    });
+
+    // 下一个函数
+    uiSink.add(UI.STARTED);
+    return _createStopFunc(timer, timeSink, uiSink);
   }
 
-  return nextFunc;
+  return func;
+}
+
+CommandFunc _createStopFunc(
+    final Timer timer, final Sink<double> timeSink, final Sink<UI> uiSink) {
+  // 下一个函数
+  CommandFunc func(command) {
+    if (command != Command.STOP) {
+      return func;
+    }
+
+    timer.cancel();
+    uiSink.add(UI.STOPED);
+    return _createStartFunc(timeSink, uiSink);
+  }
+
+  return func;
 }
 
 class TimerController {
-  StreamController<Result> _streamController;
-  Stream<Result> stream;
   CommandFunc _nextFunc;
 
+  StreamController<double> _timeStreamController;
+  StreamController<UI> _uiStreamController;
+  Stream<UI> uiStream;
+  Stream<Event> eventStream;
+
   void init() {
-    _streamController = StreamController<Result>();
-    stream = _streamController.stream;
+    _timeStreamController = StreamController<double>();
+    _uiStreamController = StreamController<UI>();
+    uiStream = _uiStreamController.stream.asBroadcastStream();
+    eventStream = CombineLatestStream.combine2(
+      _timeStreamController.stream.asBroadcastStream(),
+      uiStream,
+      (time, ui) => Event(time, ui),
+    );
 
-    final timeData = TimeData(_streamController, 0);
-
-    CommandFunc func(command) {
-      if (command != Command.START) {
-        return func;
-      }
-      return _startTimer(timeData);
-    }
-
-    _nextFunc = func;
+    _nextFunc =
+        _createStartFunc(_timeStreamController.sink, _uiStreamController.sink);
   }
 
   void dispose() {
-    _nextFunc(Command.FINISH);
-    _streamController.close();
+    _nextFunc(Command.STOP);
+    _timeStreamController.close();
+    _uiStreamController.close();
   }
 
   void execCommand(Command command) {
     _nextFunc = _nextFunc(command);
   }
 }
-
-/*
-class Singleton {
-  static final Singleton _singleton = Singleton._internal();
-
-  factory Singleton() {
-    return _singleton;
-  }
-
-  Singleton._internal();
-}
- */
