@@ -17,7 +17,6 @@ CommandFunc _createStartFunc(
       timeSink.add(sum);
     });
 
-    // 下一个函数
     uiSink.add(UI.STARTED);
     return _createStopFunc(timer, timeSink, uiSink);
   }
@@ -27,7 +26,6 @@ CommandFunc _createStartFunc(
 
 CommandFunc _createStopFunc(
     final Timer timer, final Sink<double> timeSink, final Sink<UI> uiSink) {
-  // 下一个函数
   CommandFunc func(command) {
     if (command != Command.STOP) {
       return func;

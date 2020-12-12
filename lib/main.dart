@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:timer/TimerController.dart';
+import 'package:timer/controller.dart';
 
 import 'model.dart';
 
